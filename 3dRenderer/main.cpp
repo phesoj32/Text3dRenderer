@@ -254,12 +254,14 @@ struct vertPos3d
 struct triangle3d
 {
 public:
+    char colour;
     vertPos3d verts[3];
 
     triangle3d() {}
 
-    triangle3d(const vertPos3d &a, const vertPos3d &b, const vertPos3d &c)
+    triangle3d(char Colour, const vertPos3d &a, const vertPos3d &b, const vertPos3d &c)
     {
+        colour = Colour;
         verts[0] = a;
         verts[1] = b;
         verts[2] = c;
@@ -374,7 +376,7 @@ class Renderer
                             if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
                                 // Pixel is inside the triangle; paint it
                                
-                                setPixel(vec2i(x,y), '#');
+                                setPixel(vec2i(x,y), curMesh.triangles[j].colour);
                             }
                         }
                     }
@@ -625,61 +627,73 @@ int main()
     std::vector<triangle3d> squareMesh = {
 
         triangle3d(
+        '@',
         vertPos3d(1, 1, 1),
         vertPos3d(1, -1, 1),
         vertPos3d(-1, 1, 1)),
 
         triangle3d(
+        '@',
         vertPos3d(-1, -1, 1),
         vertPos3d(1, -1, 1),
         vertPos3d(-1, 1, 1)),
 
         triangle3d(
+        '#',
         vertPos3d(1, 1, -1),
         vertPos3d(1, -1, -1),
         vertPos3d(-1, 1, -1)),
 
         triangle3d(
+        '#',
         vertPos3d(-1, -1, -1),
         vertPos3d(1, -1, -1),
         vertPos3d(-1, 1,-1)),
 
         triangle3d(
+        '+',
         vertPos3d(1, 1, 1),
         vertPos3d(1, 1, -1),
         vertPos3d(1, -1, 1)),
 
         triangle3d(
+        '+',
         vertPos3d(1, -1, -1),
         vertPos3d(1, 1, -1),
         vertPos3d(1, -1, 1)),
 
         triangle3d(
+        '=',
         vertPos3d(-1, 1, 1),
         vertPos3d(-1, 1, -1),
         vertPos3d(-1, -1, 1)),
 
         triangle3d(
+        '=',
         vertPos3d(-1, -1, -1),
         vertPos3d(-1, 1, -1),
         vertPos3d(-1, -1, 1)),
 
         triangle3d(
+        ';',
         vertPos3d(1, 1, 1),
         vertPos3d(-1, 1, 1),
         vertPos3d(1, 1, -1)),
 
         triangle3d(
+        ';',
         vertPos3d(-1, 1, -1),
         vertPos3d(-1, 1, 1),
         vertPos3d(1, 1, -1)),
 
         triangle3d(
+        '?',
         vertPos3d(1, -1, 1),
         vertPos3d(-1, -1, 1),
         vertPos3d(1, -1, -1)),
 
         triangle3d(
+        '?',
         vertPos3d(-1, -1, -1),
         vertPos3d(-1, -1, 1),
         vertPos3d(1, -1, -1))
