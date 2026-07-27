@@ -102,8 +102,10 @@ private:
 
         // Inverse of the (Yaw(-ψ)·Pitch(-λ)·Roll(-θ)) matrix used in calculateProjectedPoint
         // is Roll(θ)·Pitch(λ)·Yaw(ψ) — this keeps movement perfectly in sync with the view.
-        MatrixCalc::mat3x3 invRotMatrix =
-            MatrixCalc::multiply3x3(MatrixCalc::multiply3x3(rollRotMat, pitchRotMat), yawRotMat);
+
+        //pitchRotMat, yawRotMat), rollRotMat
+        MatrixCalc::mat3x3 invRotMatrix = 
+        MatrixCalc::multiply3x3(MatrixCalc::multiply3x3(rollRotMat, yawRotMat), pitchRotMat);
 
         MatrixCalc::Mat3x1 in{ v.x, v.y, v.z };
         MatrixCalc::Mat3x1 out = MatrixCalc::matMult3x3_3x1(in, invRotMatrix);
@@ -206,13 +208,13 @@ public:
 
         if (GetAsyncKeyState(VK_RIGHT))
             yaw += rotAmount;
-
+           /* keeping for future refrence
         if (GetAsyncKeyState(VK_NEXT))
             roll -= rotAmount;
 
         if (GetAsyncKeyState(VK_PRIOR))
             roll += rotAmount;
-
+            */
         if (GetAsyncKeyState('F'))
             fov += 5 * deltaTime;
 
@@ -438,7 +440,7 @@ class Renderer
 
             //yaw pitch roll method
 
-            MatrixCalc::mat3x3 fullRotMatrix = MatrixCalc::multiply3x3(MatrixCalc::multiply3x3(yawRotMat, pitchRotMat), rollRotMat);
+            MatrixCalc::mat3x3 fullRotMatrix = MatrixCalc::multiply3x3(MatrixCalc::multiply3x3(pitchRotMat, yawRotMat), rollRotMat);
 
             return point3d(Mat3x1topoint3d(MatrixCalc::matMult3x3_3x1(point3dtoMat3x1(point), fullRotMatrix)));
 
