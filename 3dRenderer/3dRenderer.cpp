@@ -420,7 +420,7 @@ class Renderer
                         );
 
                         // Draw pixel
-                        #if (true)
+                        #if (false)
                         if (wa >= wb && wa >= wc)
                         {
                             setPixel(vec2i(x, y), '#');
