@@ -236,30 +236,16 @@ void bPrint(const char* data, size_t size) {
     ::write(1, data, size);
 #endif
 }
-struct vertPos3d
-{
-    float x;
-    float y;
-    float z;
-    vertPos3d() : x(0), y(0), z(0) {}
-
-    vertPos3d(float X, float Y, float Z)
-    {
-        x = X;
-        y = Y;
-        z = Z;
-    }
-};
 
 struct triangle3d
 {
 public:
     char colour;
-    vertPos3d verts[3];
+    point3d verts[3];
 
     triangle3d() {}
 
-    triangle3d(char Colour, const vertPos3d &a, const vertPos3d &b, const vertPos3d &c)
+    triangle3d(char Colour, const point3d &a, const point3d &b, const point3d &c)
     {
         colour = Colour;
         verts[0] = a;
@@ -304,8 +290,12 @@ class Renderer
         std::string asciiBrightnessPalette;
         vec2i screenDims;
         int charCount;
+
         std::vector<char> blankScreen;
         std::vector<char> screenBuffer;
+        std::vector<float> depthBuffer;
+
+
 
         void setPixel(vec2i coords, char character) {
             if (coords.x >= 0 && coords.x < screenDims.x && coords.y >= 0 && coords.y < screenDims.y) {
@@ -332,59 +322,128 @@ class Renderer
             }
         };
 
-        std::vector<vec2i> rasterizeAndConvertToFrameBufferCoords(const Mesh &curMesh)
+        std::vector<vec2i> rasterizeAndConvertToFrameBufferCoords(const Mesh& curMesh)
         {
+            for (int j = 0; j < curMesh.triangles.size(); j++)
+            {
+                sspTriangle2d curTri2d;
+                triangle3d curTri3d = curMesh.triangles[j];
 
-                for (int j = 0; j < curMesh.triangles.size(); j++)
+                // Project each vertex
+                for (int l = 0; l < 3; l++)
                 {
-                    sspTriangle2d curTri;
-                    bool valid = true;
+                    point3d point = curTri3d.verts[l];
 
-                    for (int l = 0; l < 3; l++)
+                    curTri2d.verts[l] = screenCoordsToArrayCoords(
+                        calculateProjectedPoint(point, camera),
+                        screenDims
+                    );
+                }
+
+                // Bounding box
+                int minX = std::max(0.0f, std::min({
+                    curTri2d.verts[0].x,
+                    curTri2d.verts[1].x,
+                    curTri2d.verts[2].x
+                    }));
+
+                int maxX = std::min(static_cast<float>(screenDims.x) - 1, std::max({
+                    curTri2d.verts[0].x,
+                    curTri2d.verts[1].x,
+                    curTri2d.verts[2].x
+                    }));
+
+                int minY = std::max(0.0f, std::min({
+                    curTri2d.verts[0].y,
+                    curTri2d.verts[1].y,
+                    curTri2d.verts[2].y
+                    }));
+
+                int maxY = std::min(static_cast<float>(screenDims.y) - 1, std::max({
+                    curTri2d.verts[0].y,
+                    curTri2d.verts[1].y,
+                    curTri2d.verts[2].y
+                    }));
+
+                float area = edgeFunction(
+                    curTri2d.verts[0],
+                    curTri2d.verts[1],
+                    curTri2d.verts[2]
+                );
+
+                // Skip degenerate triangles
+                if (area == 0.0f)
+                    continue;
+
+                for (int y = minY; y <= maxY; y++)
+                {
+                    for (int x = minX; x <= maxX; x++)
                     {
-                        vertPos3d currentVert = curMesh.triangles[j].verts[l];
-                        point3d point(currentVert.x, currentVert.y, currentVert.z);
+                        vec2 p(x + 0.5f, y + 0.5f);
 
-                        vec2i screenCoords = screenCoordsToArrayCoords(calculateProjectedPoint(point, camera), screenDims);
-                            curTri.verts[l] = screenCoords;
-                        
+                        float w0 = edgeFunction(curTri2d.verts[1], curTri2d.verts[2], p);
+                        float w1 = edgeFunction(curTri2d.verts[2], curTri2d.verts[0], p);
+                        float w2 = edgeFunction(curTri2d.verts[0], curTri2d.verts[1], p);
 
-                    }
-                    
-                    int minX = std::min({ curTri.verts[0].x, curTri.verts[1].x, curTri.verts[2].x });
-                    int minY = std::min({ curTri.verts[0].y, curTri.verts[1].y, curTri.verts[2].y });
-                    int maxX = std::max({ curTri.verts[0].x, curTri.verts[1].x, curTri.verts[2].x });
-                    int maxY = std::max({ curTri.verts[0].y, curTri.verts[1].y, curTri.verts[2].y });
+                        bool inside =
+                            (w0 >= 0 && w1 >= 0 && w2 >= 0) ||
+                            (w0 <= 0 && w1 <= 0 && w2 <= 0);
 
-                    minX = std::max(minX, 0);
-                    minY = std::max(minY, 0);
-                    maxX = std::min(maxX, screenDims.x - 1);
-                    maxY = std::min(maxY, screenDims.y - 1);
+                        if (!inside)
+                            continue;
 
+                        // Screen-space barycentric coordinates
+                        float t = w0 / area;
+                        float u = w1 / area;
+                        float v = w2 / area;
 
-                    for (int y = minY; y <= maxY; y++)
-                    {
-                        for (int x = minX; x <= maxX; x++)
+                        point3d a = curTri3d.verts[0];
+                        point3d b = curTri3d.verts[1];
+                        point3d c = curTri3d.verts[2];
+
+                        // Perspective-correct barycentric weights
+                        float wa = t / a.z;
+                        float wb = u / b.z;
+                        float wc = v / c.z;
+
+                        float sum = wa + wb + wc;
+
+                        wa /= sum;
+                        wb /= sum;
+                        wc /= sum;
+
+                        // Correct interpolated 3D position
+                        point3d pos3d(
+                            wa * a.x + wb * b.x + wc * c.x,
+                            wa * a.y + wb * b.y + wc * c.y,
+                            wa * a.z + wb * b.z + wc * c.z
+                        );
+
+                        // Draw pixel
+                        #if (true)
+                        if (wa >= wb && wa >= wc)
                         {
-                            vec2 p(x + 0.5f, y + 0.5f);
-
-                            float w0 = edgeFunction(curTri.verts[1], curTri.verts[2], p);
-                            float w1 = edgeFunction(curTri.verts[2], curTri.verts[0], p);
-                            float w2 = edgeFunction(curTri.verts[0], curTri.verts[1], p);
-
-                            // If the triangle faces the opposite direction, reverse the sign check
-                            if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
-                                // Pixel is inside the triangle; paint it
-                               
-                                setPixel(vec2i(x,y), curMesh.triangles[j].colour);
-                            }
+                            setPixel(vec2i(x, y), '#');
                         }
+                        if (wc >= wb && wc >= wa)
+                        {
+                            setPixel(vec2i(x, y), '+');
+                        }
+                        if (wb >= wa && wb >= wc)
+                        {
+                            setPixel(vec2i(x, y), '=');
+                        }
+                        #else
+                        setPixel(vec2i(x, y), curTri3d.colour);
+                        #endif
+
+
+
                     }
                 }
-            
-                return std::vector<vec2i>(1, vec2i(1, 1));
+            }
 
-
+            return { vec2i(1, 1) };
         }
 
         vec2i screenCoordsToArrayCoords(const point2d &point, vec2i dimensions) 
@@ -524,7 +583,7 @@ class Renderer
             meshes = mesh;
             blankScreen.assign(charCount, '.');
             screenBuffer.assign(charCount, '.');
-
+            screenBuffer.assign(charCount, 0.0f);
 
 
             for (int y = 0; y < screenDims.y; y++) 
@@ -574,7 +633,7 @@ class Renderer
             #endif
             
             bPrint(screenBuffer.data(), screenBuffer.size());
-            if (debugMode)
+            #if (debugMode)
             {
                 std::string output =
                     "\n-- Camera Debug --\n"
@@ -594,6 +653,7 @@ class Renderer
 
                 bPrint(output.c_str(), output.size());
             }
+            #endif
         }
         void onEnd()
         {
@@ -628,75 +688,74 @@ int main()
 
         triangle3d(
         '@',
-        vertPos3d(1, 1, 1),
-        vertPos3d(1, -1, 1),
-        vertPos3d(-1, 1, 1)),
-
+        point3d(1, 1, 1),
+        point3d(1, -1, 1),
+        point3d(-1, 1, 1)),
         triangle3d(
         '@',
-        vertPos3d(-1, -1, 1),
-        vertPos3d(1, -1, 1),
-        vertPos3d(-1, 1, 1)),
+        point3d(-1, -1, 1),
+        point3d(1, -1, 1),
+        point3d(-1, 1, 1)),
 
         triangle3d(
         '#',
-        vertPos3d(1, 1, -1),
-        vertPos3d(1, -1, -1),
-        vertPos3d(-1, 1, -1)),
+        point3d(1, 1, -1),
+        point3d(1, -1, -1),
+        point3d(-1, 1, -1)),
 
         triangle3d(
         '#',
-        vertPos3d(-1, -1, -1),
-        vertPos3d(1, -1, -1),
-        vertPos3d(-1, 1,-1)),
+        point3d(-1, -1, -1),
+        point3d(1, -1, -1),
+        point3d(-1, 1,-1)),
 
         triangle3d(
         '+',
-        vertPos3d(1, 1, 1),
-        vertPos3d(1, 1, -1),
-        vertPos3d(1, -1, 1)),
+        point3d(1, 1, 1),
+        point3d(1, 1, -1),
+        point3d(1, -1, 1)),
 
         triangle3d(
         '+',
-        vertPos3d(1, -1, -1),
-        vertPos3d(1, 1, -1),
-        vertPos3d(1, -1, 1)),
+        point3d(1, -1, -1),
+        point3d(1, 1, -1),
+        point3d(1, -1, 1)),
 
         triangle3d(
         '=',
-        vertPos3d(-1, 1, 1),
-        vertPos3d(-1, 1, -1),
-        vertPos3d(-1, -1, 1)),
+        point3d(-1, 1, 1),
+        point3d(-1, 1, -1),
+        point3d(-1, -1, 1)),
 
         triangle3d(
         '=',
-        vertPos3d(-1, -1, -1),
-        vertPos3d(-1, 1, -1),
-        vertPos3d(-1, -1, 1)),
+        point3d(-1, -1, -1),
+        point3d(-1, 1, -1),
+        point3d(-1, -1, 1)),
 
         triangle3d(
         ';',
-        vertPos3d(1, 1, 1),
-        vertPos3d(-1, 1, 1),
-        vertPos3d(1, 1, -1)),
+        point3d(1, 1, 1),
+        point3d(-1, 1, 1),
+        point3d(1, 1, -1)),
 
         triangle3d(
         ';',
-        vertPos3d(-1, 1, -1),
-        vertPos3d(-1, 1, 1),
-        vertPos3d(1, 1, -1)),
+        point3d(-1, 1, -1),
+        point3d(-1, 1, 1),
+        point3d(1, 1, -1)),
 
         triangle3d(
         '?',
-        vertPos3d(1, -1, 1),
-        vertPos3d(-1, -1, 1),
-        vertPos3d(1, -1, -1)),
+        point3d(1, -1, 1),
+        point3d(-1, -1, 1),
+        point3d(1, -1, -1)),
 
         triangle3d(
         '?',
-        vertPos3d(-1, -1, -1),
-        vertPos3d(-1, -1, 1),
-        vertPos3d(1, -1, -1))
+        point3d(-1, -1, -1),
+        point3d(-1, -1, 1),
+        point3d(1, -1, -1))
     };
     Mesh square(squareMesh);
     meshes.push_back(square);
