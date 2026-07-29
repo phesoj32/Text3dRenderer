@@ -17,8 +17,28 @@
 #include <cmath>
 #include <algorithm>
 
+struct point2d
+{
+    float x;
+    float y;
 
+    point2d() : x(0), y(0) {}
 
+    point2d(float X, float Y)
+    {
+        x = X;
+        y = Y;
+    }
+};
+
+struct ProjectedPoint
+{
+    point2d screen;
+    float viewZ;
+
+    ProjectedPoint() : screen(), viewZ(0) {}
+    ProjectedPoint(point2d s, float z) : screen(s), viewZ(z) {}
+};
 
 bool debugMode = true;
 double tau = std::numbers::pi * 2.0;
@@ -283,7 +303,7 @@ class Mesh
 class Renderer
 {
 
-    private:
+
         std::vector<Mesh> meshes;
         std::vector<sspTriangle2d> projectedTriangles;
         int frameCount;
@@ -308,19 +328,7 @@ class Renderer
             return (c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x);
         }
         Camera3d camera;
-        struct point2d
-        {
-            float x;
-            float y;
-
-            point2d() : x(0), y(0) {}
-
-            point2d(float X, float Y)
-            {
-                x = X;
-                y = Y;
-            }
-        };
+        
 
         std::vector<vec2i> rasterizeAndConvertToFrameBufferCoords(const Mesh& curMesh)
         {
@@ -329,15 +337,17 @@ class Renderer
                 sspTriangle2d curTri2d;
                 triangle3d curTri3d = curMesh.triangles[j];
 
+                float viewZ[3]; // view-space z per vertex, replaces raw world z
+
                 // Project each vertex
                 for (int l = 0; l < 3; l++)
                 {
                     point3d point = curTri3d.verts[l];
 
-                    curTri2d.verts[l] = screenCoordsToArrayCoords(
-                        calculateProjectedPoint(point, camera),
-                        screenDims
-                    );
+                    ProjectedPoint proj = calculateProjectedPoint(point, camera);
+
+                    curTri2d.verts[l] = screenCoordsToArrayCoords(proj.screen, screenDims);
+                    viewZ[l] = proj.viewZ;
                 }
 
                 // Bounding box
@@ -397,14 +407,10 @@ class Renderer
                         float u = w1 / area;
                         float v = w2 / area;
 
-                        point3d a = curTri3d.verts[0];
-                        point3d b = curTri3d.verts[1];
-                        point3d c = curTri3d.verts[2];
-
-                        // Perspective-correct barycentric weights
-                        float wa = t / a.z;
-                        float wb = u / b.z;
-                        float wc = v / c.z;
+                        // Perspective-correct barycentric weights, using VIEW-SPACE z
+                        float wa = t / viewZ[0];
+                        float wb = u / viewZ[1];
+                        float wc = v / viewZ[2];
 
                         float sum = wa + wb + wc;
 
@@ -412,33 +418,18 @@ class Renderer
                         wb /= sum;
                         wc /= sum;
 
-                        // Correct interpolated 3D position
-                        point3d pos3d(
-                            wa * a.x + wb * b.x + wc * c.x,
-                            wa * a.y + wb * b.y + wc * c.y,
-                            wa * a.z + wb * b.z + wc * c.z
-                        );
+                        // Interpolated view-space z (this is what we depth test against)
+                        float interpZ = wa * viewZ[0] + wb * viewZ[1] + wc * viewZ[2];
 
-                        // Draw pixel
-                        #if (false)
-                        if (wa >= wb && wa >= wc)
+                        float depth = 1.0f / interpZ;
+
+                        int depthIndex = x + y * screenDims.x;
+
+                        if (depth > depthBuffer[depthIndex])
                         {
-                            setPixel(vec2i(x, y), '#');
+                            depthBuffer[depthIndex] = depth;
+                            setPixel(vec2i(x, y), curTri3d.colour);
                         }
-                        if (wc >= wb && wc >= wa)
-                        {
-                            setPixel(vec2i(x, y), '+');
-                        }
-                        if (wb >= wa && wb >= wc)
-                        {
-                            setPixel(vec2i(x, y), '=');
-                        }
-                        #else
-                        setPixel(vec2i(x, y), curTri3d.colour);
-                        #endif
-
-
-
                     }
                 }
             }
@@ -552,7 +543,7 @@ class Renderer
         }
         bool isRunnning;
 
-        point2d calculateProjectedPoint(const point3d point, const Camera3d& cam)
+        ProjectedPoint calculateProjectedPoint(const point3d point, const Camera3d& cam)
         {
             point3d poin = point;
 
@@ -561,16 +552,15 @@ class Renderer
             poin.z = (point.z - cam.z);
 
             poin = follRotMatrixTransformation(poin, -cam.roll, -cam.pitch, -cam.yaw);
+
             if (poin.z <= 0.1f) {
-                return point2d(-999.0f, -999.0f); // makes it offscreen
+                return ProjectedPoint(point2d(-999.0f, -999.0f), poin.z); // offscreen
             }
 
             float x = poin.x * cam.fov / poin.z;
             float y = poin.y * cam.fov / poin.z;
 
-            
-
-            return point2d(x, y);
+            return ProjectedPoint(point2d(x, y), poin.z);
         }
         void initialise(std::vector<Mesh> mesh)
         {
@@ -609,6 +599,7 @@ class Renderer
         void updateFrame(float deltaTime)
         {
             camera.pollEvents(deltaTime);
+            depthBuffer.assign(screenDims.x * screenDims.y, 0);
             screenBuffer = blankScreen;
             //loops over all meshes vertices
             for (int i = 0; i < meshes.size(); i++)
