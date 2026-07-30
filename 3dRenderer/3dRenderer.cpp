@@ -552,11 +552,11 @@ class Renderer
             poin.z = (point.z - cam.z);
 
             poin = follRotMatrixTransformation(poin, -cam.roll, -cam.pitch, -cam.yaw);
-
+            
             if (poin.z <= 0.1f) {
                 return ProjectedPoint(point2d(-999.0f, -999.0f), poin.z); // offscreen
             }
-
+            
             float x = poin.x * cam.fov / poin.z;
             float y = poin.y * cam.fov / poin.z;
 
