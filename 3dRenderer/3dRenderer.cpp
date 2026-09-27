@@ -57,19 +57,47 @@ struct vec2i
             y = Y;
         }
 };
-struct point3d
+
+struct ColourRGB
 {
-    float x;
-    float y;
-    float z;
+    float r, g, b;
 
-    point3d() : x(0), y(0), z(0) {}
+    ColourRGB() : r(0), g(0), b(0) {}
 
-    point3d(float X, float Y, float Z)
+    ColourRGB(float R, float G, float B)
+    {
+        r = R;
+        g = G;
+        b = B;
+    }
+};
+
+
+struct vec3
+{
+    float x, y, z;
+    vec3() : x(0), y(0), z(0) {}
+    vec3(float X, float Y, float Z)
     {
         x = X;
         y = Y;
         z = Z;
+    }
+
+};
+
+struct vertex
+{
+    vec3 position;
+    ColourRGB colour;
+
+
+    vertex() : position(vec3(0.0f,0.0f,0.0f)), colour(ColourRGB(0.0f, 0.0f, 0.0f)) {}
+
+    vertex(vec3 Position, ColourRGB Colour)
+    {
+        position = Position;  
+        colour = Colour;
     }
 };
 struct vec2
@@ -97,7 +125,7 @@ public:
 class Camera3d
 {
 private:
-    point3d camToWorld(point3d v) const
+    vec3 camToWorld(vec3 v) const
     {
         float sinTheta = std::sin(roll), cosTheta = std::cos(roll);
         MatrixCalc::mat3x3 rollRotMat{
@@ -129,7 +157,7 @@ private:
 
         MatrixCalc::Mat3x1 in{ v.x, v.y, v.z };
         MatrixCalc::Mat3x1 out = MatrixCalc::matMult3x3_3x1(in, invRotMatrix);
-        return point3d(out[0], out[1], out[2]);
+        return vec3(out[0], out[1], out[2]);
     }
 
 public:
@@ -174,8 +202,8 @@ public:
         float sinYaw = std::sin(yaw);
 
 
-        point3d forward = camToWorld(point3d(0.0f, 0.0f, 1.0f));
-        point3d right = camToWorld(point3d(1.0f, 0.0f, 0.0f));
+        vec3 forward = camToWorld(vec3(0.0f, 0.0f, 1.0f));
+        vec3 right = camToWorld(vec3(1.0f, 0.0f, 0.0f));
 
         // Movement
         if (GetAsyncKeyState('W'))
@@ -261,11 +289,11 @@ struct triangle3d
 {
 public:
     char colour;
-    point3d verts[3];
+    vertex verts[3];
 
     triangle3d() {}
 
-    triangle3d(char Colour, const point3d &a, const point3d &b, const point3d &c)
+    triangle3d(char Colour, const vertex &a, const vertex &b, const vertex &c)
     {
         colour = Colour;
         verts[0] = a;
@@ -342,9 +370,9 @@ class Renderer
                 // Project each vertex
                 for (int l = 0; l < 3; l++)
                 {
-                    point3d point = curTri3d.verts[l];
+                    vertex point = curTri3d.verts[l];
 
-                    ProjectedPoint proj = calculateProjectedPoint(point, camera);
+                    ProjectedPoint proj = calculateProjectedPoint(point.position, camera);
 
                     curTri2d.verts[l] = screenCoordsToArrayCoords(proj.screen, screenDims);
                     viewZ[l] = proj.viewZ;
@@ -386,7 +414,7 @@ class Renderer
                     continue;
 
                 for (int y = minY; y <= maxY; y++)
-                {
+                {     
                     for (int x = minX; x <= maxX; x++)
                     {
                         vec2 p(x + 0.5f, y + 0.5f);
@@ -451,16 +479,16 @@ class Renderer
 
         
         
-        MatrixCalc::Mat3x1 point3dtoMat3x1(point3d p)
+        MatrixCalc::Mat3x1 point3dtoMat3x1(vec3 p)
         {
             return { p.x, p.y, p.z };
         }
 
-        point3d Mat3x1topoint3d(MatrixCalc::Mat3x1 m)
+        vec3 Mat3x1topoint3d(MatrixCalc::Mat3x1 m)
         {
-            return point3d(m[0], m[1], m[2]);
+            return vec3(m[0], m[1], m[2]);
         }
-        point3d follRotMatrixTransformation(point3d point, float theta, float lambda, float psi)
+        vec3 follRotMatrixTransformation(vec3 point, float theta, float lambda, float psi)
         {
             float sinTheta = std::sin(theta);
             float cosTheta = std::cos(theta);
@@ -494,10 +522,10 @@ class Renderer
 
             MatrixCalc::mat3x3 fullRotMatrix = MatrixCalc::multiply3x3(MatrixCalc::multiply3x3(pitchRotMat, yawRotMat), rollRotMat);
 
-            return point3d(Mat3x1topoint3d(MatrixCalc::matMult3x3_3x1(point3dtoMat3x1(point), fullRotMatrix)));
+            return vec3(Mat3x1topoint3d(MatrixCalc::matMult3x3_3x1(point3dtoMat3x1(point), fullRotMatrix)));
 
         }
-        point3d rollRotMatrixTransform(point3d point, float theta)
+        vec3 rollRotMatrixTransform(vec3 point, float theta)
         {
             float sinTheta = std::sin(theta);
             float cosTheta = std::cos(theta);
@@ -514,7 +542,7 @@ class Renderer
             return  Mat3x1topoint3d( MatrixCalc::matMult3x3_3x1(point3dtoMat3x1(point), rollRotMat));
         }
 
-        point3d pitchRotMatrixTransform(point3d point, float theta)
+        vec3 pitchRotMatrixTransform(vec3 point, float theta)
         {
             float sinTheta = std::sin(theta);
             float cosTheta = std::cos(theta);
@@ -528,7 +556,7 @@ class Renderer
             return  Mat3x1topoint3d(MatrixCalc::matMult3x3_3x1(point3dtoMat3x1(point), RotMat));
         }
 
-        point3d yawRotMatrixTransform(point3d point, float theta)
+        vec3 yawRotMatrixTransform(vec3 point, float theta)
         {
             float sinTheta = std::sin(theta);
             float cosTheta = std::cos(theta);
@@ -543,9 +571,9 @@ class Renderer
         }
         bool isRunnning;
 
-        ProjectedPoint calculateProjectedPoint(const point3d point, const Camera3d& cam)
+        ProjectedPoint calculateProjectedPoint(const vec3 point, const Camera3d& cam)
         {
-            point3d poin = point;
+            vec3 poin = point;
 
             poin.x = (point.x - cam.x);
             poin.y = (point.y - cam.y);
@@ -573,6 +601,7 @@ class Renderer
             meshes = mesh;
             blankScreen.assign(charCount, '.');
             screenBuffer.assign(charCount, '.');
+
             screenBuffer.assign(charCount, 0.0f);
 
 
@@ -678,75 +707,78 @@ int main()
     std::vector<triangle3d> squareMesh = {
 
         triangle3d(
-        '@',
-        point3d(1, 1, 1),
-        point3d(1, -1, 1),
-        point3d(-1, 1, 1)),
+        '&',
+        vertex(vec3(1, 1, 1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(1, -1, 1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(-1, 1, 1), ColourRGB(0.0f,0.0f,1.0f))),
+
+        triangle3d(
+        '&',
+        vertex(vec3(-1, -1, 1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(1, -1, 1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(-1, 1, 1), ColourRGB(0.0f,0.0f,1.0f))),
+
+        triangle3d(
+        '%',
+        vertex(vec3(1, 1, -1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(1, -1, -1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(-1, 1, -1), ColourRGB(0.0f,0.0f,1.0f))),
+
+        triangle3d(
+        '%',
+        vertex(vec3(-1, -1, -1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(1, -1, -1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(-1, 1,-1), ColourRGB(0.0f,0.0f,1.0f))),
+
         triangle3d(
         '@',
-        point3d(-1, -1, 1),
-        point3d(1, -1, 1),
-        point3d(-1, 1, 1)),
+        vertex(vec3(1, 1, 1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(1, 1, -1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(1, -1, 1), ColourRGB(0.0f,0.0f,1.0f))),
+
+        triangle3d(
+        '@',
+        vertex(vec3(1, -1, -1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(1, 1, -1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(1, -1, 1), ColourRGB(0.0f,0.0f,1.0f))),
+  
+        triangle3d(
+        '#',
+        vertex(vec3(-1, 1, 1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(-1, 1, -1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(-1, -1, 1), ColourRGB(0.0f,0.0f,1.0f))),
 
         triangle3d(
         '#',
-        point3d(1, 1, -1),
-        point3d(1, -1, -1),
-        point3d(-1, 1, -1)),
-
+        vertex(vec3(-1, -1, -1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(-1, 1, -1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(-1, -1, 1), ColourRGB(0.0f,0.0f,1.0f))),
+    
         triangle3d(
-        '#',
-        point3d(-1, -1, -1),
-        point3d(1, -1, -1),
-        point3d(-1, 1,-1)),
+        '+',
+        vertex(vec3(1, 1, 1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(-1, 1, 1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(1, 1, -1), ColourRGB(0.0f,0.0f,1.0f))),
 
         triangle3d(
         '+',
-        point3d(1, 1, 1),
-        point3d(1, 1, -1),
-        point3d(1, -1, 1)),
-
-        triangle3d(
-        '+',
-        point3d(1, -1, -1),
-        point3d(1, 1, -1),
-        point3d(1, -1, 1)),
-
-        triangle3d(
-        '=',
-        point3d(-1, 1, 1),
-        point3d(-1, 1, -1),
-        point3d(-1, -1, 1)),
-
-        triangle3d(
-        '=',
-        point3d(-1, -1, -1),
-        point3d(-1, 1, -1),
-        point3d(-1, -1, 1)),
-
-        triangle3d(
-        ';',
-        point3d(1, 1, 1),
-        point3d(-1, 1, 1),
-        point3d(1, 1, -1)),
-
-        triangle3d(
-        ';',
-        point3d(-1, 1, -1),
-        point3d(-1, 1, 1),
-        point3d(1, 1, -1)),
+        vertex(vec3(-1, 1, -1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(-1, 1, 1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(1, 1, -1), ColourRGB(0.0f,0.0f,1.0f))),
 
         triangle3d(
         '?',
-        point3d(1, -1, 1),
-        point3d(-1, -1, 1),
-        point3d(1, -1, -1)),
+        vertex(vec3(1, -1, 1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(-1, -1, 1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(1, -1, -1), ColourRGB(0.0f,0.0f,1.0f))),
+
 
         triangle3d(
         '?',
-        point3d(-1, -1, -1),
-        point3d(-1, -1, 1),
-        point3d(1, -1, -1))
+        vertex(vec3(-1, -1, -1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(-1, -1, 1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(1, -1, -1), ColourRGB(0.0f,0.0f,1.0f))),
+
     };
     Mesh square(squareMesh);
     meshes.push_back(square);
