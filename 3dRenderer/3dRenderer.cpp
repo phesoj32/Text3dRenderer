@@ -352,15 +352,15 @@ class Renderer
         vec2i screenDims;
         int charCount;
 
-        std::vector<char> blankScreen;
-        std::vector<char> screenBuffer;
+        std::vector<std::string> blankScreen;
+        std::vector<std::string> screenBuffer;
         std::vector<float> depthBuffer;
 
         std::string rgbText(int r, int g, int b) {
             return "\x1b[38;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m";
         }
 
-        void setPixel(vec2i coords, char character) {
+        void setPixel(vec2i coords, std::string character) {
             if (coords.x >= 0 && coords.x < screenDims.x && coords.y >= 0 && coords.y < screenDims.y) {
                 int stride = screenDims.x + 1;
                 screenBuffer[coords.x + (coords.y * stride)] = character;
@@ -471,7 +471,7 @@ class Renderer
                         if (depth > depthBuffer[depthIndex])
                         {
                             depthBuffer[depthIndex] = depth;
-                            setPixel(vec2i(x, y), curTri3d.colour);
+                            setPixel(vec2i(x, y),  rgbText(wa * 255, wb * 255, wc * 255) + std::string(1, curTri3d.colour));
                         }
                     }
                 }
@@ -614,10 +614,10 @@ class Renderer
             charCount = (screenDims.x + 1) * screenDims.y;
             isRunnning = true;
             meshes = mesh;
-            blankScreen.assign(charCount, '.');
-            screenBuffer.assign(charCount, '.');
+            blankScreen.assign(charCount, " ");
+            screenBuffer.assign(charCount, " ");
 
-            screenBuffer.assign(charCount, 0.0f);
+            
 
 
             for (int y = 0; y < screenDims.y; y++) 
@@ -666,8 +666,15 @@ class Renderer
             // POSIX terminal escape sequence to move cursor to home position (0, 0)
             std::cout << "\033[H";
             #endif
-            bPrint(rgbText(55, 14, 255).c_str(), rgbText(55, 14, 255).size());
-            bPrint(screenBuffer.data(), screenBuffer.size());
+            
+            std::string output;
+
+            for (const std::string& line : screenBuffer)
+            {
+                output += line;
+            }
+
+            bPrint(output.c_str(), output.size());
             #if (debugMode)
             {
                 std::string output =
