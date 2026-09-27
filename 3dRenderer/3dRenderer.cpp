@@ -1,14 +1,13 @@
-
-
 #include "MatrixCalc.h"
 #if defined(_WIN32)
-    #define WIN32_LEAN_AND_MEAN
-    #include <windows.h>
-    #undef min
-    #undef max
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#undef min
+#undef max
 #else
-    #include <unistd.h>
+#include <unistd.h>
 #endif
+
 #include <iostream>
 #include <vector>
 #include <numbers>
@@ -16,6 +15,20 @@
 #include <chrono>
 #include <cmath>
 #include <algorithm>
+
+void enableAnsiSupport() {
+#ifdef _WIN32
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE) return;
+
+    DWORD dwMode = 0;
+    if (!GetConsoleMode(hOut, &dwMode)) return;
+
+    // Enable the ENABLE_VIRTUAL_TERMINAL_PROCESSING flag
+    dwMode |= 0x0004; // Equivalent to ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    SetConsoleMode(hOut, dwMode);
+#endif
+}
 
 struct point2d
 {
@@ -50,7 +63,7 @@ struct vec2i
         int y;
 
         vec2i() : x(0), y(0) {}
-        
+            
         vec2i(int X, int Y)
         {
             x = X;
@@ -118,7 +131,7 @@ public:
         x = other.x;
         y = other.y;
     }
-    
+        
 };
 
 
@@ -143,8 +156,8 @@ private:
 
         float sinPsi = std::sin(yaw), cosPsi = std::cos(yaw);
         MatrixCalc::mat3x3 yawRotMat{
-             cosPsi, 0, sinPsi,
-             0,      1, 0,
+                cosPsi, 0, sinPsi,
+                0,      1, 0,
             -sinPsi, 0, cosPsi
         };
 
@@ -204,7 +217,7 @@ public:
 
         vec3 forward = camToWorld(vec3(0.0f, 0.0f, 1.0f));
         vec3 right = camToWorld(vec3(1.0f, 0.0f, 0.0f));
-
+            
         // Movement
         if (GetAsyncKeyState('W'))
         {
@@ -256,7 +269,7 @@ public:
 
         if (GetAsyncKeyState(VK_RIGHT))
             yaw += rotAmount;
-           /* keeping for future refrence
+            /* keeping for future refrence
         if (GetAsyncKeyState(VK_NEXT))
             roll -= rotAmount;
 
@@ -343,7 +356,9 @@ class Renderer
         std::vector<char> screenBuffer;
         std::vector<float> depthBuffer;
 
-
+        std::string rgbText(int r, int g, int b) {
+            return "\x1b[38;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m";
+        }
 
         void setPixel(vec2i coords, char character) {
             if (coords.x >= 0 && coords.x < screenDims.x && coords.y >= 0 && coords.y < screenDims.y) {
@@ -356,7 +371,7 @@ class Renderer
             return (c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x);
         }
         Camera3d camera;
-        
+            
 
         std::vector<vec2i> rasterizeAndConvertToFrameBufferCoords(const Mesh& curMesh)
         {
@@ -470,15 +485,15 @@ class Renderer
             point2d poin = point;
             poin.x = (point.x + 1.0f) / 2.0f * (dimensions.x - 1);
             poin.y = (1.0f - point.y) / 2.0f * (dimensions.y - 1);
-            
+                
 
             return vec2i(std::round(poin.x), std::round(poin.y));
-           
-            
+               
+                
         }
 
-        
-        
+            
+            
         MatrixCalc::Mat3x1 point3dtoMat3x1(vec3 p)
         {
             return { p.x, p.y, p.z };
@@ -580,11 +595,11 @@ class Renderer
             poin.z = (point.z - cam.z);
 
             poin = follRotMatrixTransformation(poin, -cam.roll, -cam.pitch, -cam.yaw);
-            
+                
             if (poin.z <= 0.1f) {
                 return ProjectedPoint(point2d(-999.0f, -999.0f), poin.z); // offscreen
             }
-            
+                
             float x = poin.x * cam.fov / poin.z;
             float y = poin.y * cam.fov / poin.z;
 
@@ -635,7 +650,7 @@ class Renderer
             {
                 rasterizeAndConvertToFrameBufferCoords(meshes[i]);
             }
-           
+               
 
 
             frameCount++;
@@ -651,7 +666,7 @@ class Renderer
             // POSIX terminal escape sequence to move cursor to home position (0, 0)
             std::cout << "\033[H";
             #endif
-            
+            bPrint(rgbText(55, 14, 255).c_str(), rgbText(55, 14, 255).size());
             bPrint(screenBuffer.data(), screenBuffer.size());
             #if (debugMode)
             {
@@ -700,8 +715,11 @@ class Renderer
 
 
 
+    
+
 int main()
 {
+    enableAnsiSupport();
     Renderer renderer;
     std::vector<Mesh> meshes;
     std::vector<triangle3d> squareMesh = {
@@ -741,7 +759,7 @@ int main()
         vertex(vec3(1, -1, -1), ColourRGB(1.0f,0.0f,0.0f)),
         vertex(vec3(1, 1, -1), ColourRGB(0.0f,1.0f,0.0f)),
         vertex(vec3(1, -1, 1), ColourRGB(0.0f,0.0f,1.0f))),
-  
+      
         triangle3d(
         '#',
         vertex(vec3(-1, 1, 1), ColourRGB(1.0f,0.0f,0.0f)),
@@ -753,7 +771,7 @@ int main()
         vertex(vec3(-1, -1, -1), ColourRGB(1.0f,0.0f,0.0f)),
         vertex(vec3(-1, 1, -1), ColourRGB(0.0f,1.0f,0.0f)),
         vertex(vec3(-1, -1, 1), ColourRGB(0.0f,0.0f,1.0f))),
-    
+        
         triangle3d(
         '+',
         vertex(vec3(1, 1, 1), ColourRGB(1.0f,0.0f,0.0f)),
@@ -784,3 +802,4 @@ int main()
     meshes.push_back(square);
     renderer.run(meshes);
 }
+
