@@ -140,10 +140,15 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="3dRenderer.cpp" />
+    <ClCompile Include="GenericFileLoader.cpp" />
     <ClCompile Include="MatrixCalc.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="GenericFileLoader.hpp" />
     <ClInclude Include="MatrixCalc.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="..\..\..\..\Downloads\test.bmp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

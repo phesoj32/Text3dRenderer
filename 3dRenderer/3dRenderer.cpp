@@ -1,4 +1,5 @@
 #include "MatrixCalc.h"
+#include "GenericFileLoader.hpp"
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -15,6 +16,7 @@
 #include <chrono>
 #include <cmath>
 #include <algorithm>
+#include <fstream>
 
 void enableAnsiSupport() {
 #ifdef _WIN32
@@ -99,27 +101,10 @@ struct vec3
 
 };
 
-struct vertex
-{
-    vec3 position;
-    ColourRGB colour;
-
-
-    vertex() : position(vec3(0.0f,0.0f,0.0f)), colour(ColourRGB(0.0f, 0.0f, 0.0f)) {}
-
-    vertex(vec3 Position, ColourRGB Colour)
-    {
-        position = Position;  
-        colour = Colour;
-    }
-};
 struct vec2
 {
-public:
     float x, y;
-
     vec2() : x(0), y(0) {}
-
     vec2(float X, float Y)
     {
         x = X;
@@ -131,8 +116,25 @@ public:
         x = other.x;
         y = other.y;
     }
-        
+
 };
+struct vertex
+{
+    vec3 position;
+    vec2 uv;
+    ColourRGB colour;
+
+
+    vertex() : position(vec3(0.0f,0.0f,0.0f)), uv(vec2(0.0f,0.0f)), colour(ColourRGB(0.0f, 0.0f, 0.0f)) {}
+
+    vertex(vec3 Position,vec2 UV, ColourRGB Colour)
+    {
+        position = Position; 
+        uv = UV;
+        colour = Colour;
+    }
+};
+
 
 
 class Camera3d
@@ -335,9 +337,16 @@ class Mesh
 
     public:
         std::vector<triangle3d> triangles;
+        GenericFileLoader::decodedBMP bmp;
+
         Mesh(const std::vector<triangle3d>& vertpoints)
         {
             triangles = vertpoints;
+        }
+
+        void loadBmp(std::string filePath)
+        {
+            bmp  = GenericFileLoader::decodeBMP(GenericFileLoader::readFileBytes(filePath), 1);
         }
 };
 
@@ -355,6 +364,10 @@ class Renderer
         std::vector<std::string> blankScreen;
         std::vector<std::string> screenBuffer;
         std::vector<float> depthBuffer;
+
+        std::string rgbBackground(int r, int g, int b) {
+            return "\033[48;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m";
+        }
 
         std::string rgbText(int r, int g, int b) {
             return "\x1b[38;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m";
@@ -471,7 +484,20 @@ class Renderer
                         if (depth > depthBuffer[depthIndex])
                         {
                             depthBuffer[depthIndex] = depth;
-                            setPixel(vec2i(x, y),  rgbText(wa * 255, wb * 255, wc * 255) + std::string(1, curTri3d.colour));
+                            uint16_t meshU = GenericFileLoader::encodeUV(
+                                (curTri3d.verts[0].uv.x * wa) +
+                                (curTri3d.verts[1].uv.x * wb) +
+                                (curTri3d.verts[2].uv.x * wc));
+
+                            uint16_t meshV = GenericFileLoader::encodeUV(
+                                (curTri3d.verts[0].uv.y * wa) +
+                                (curTri3d.verts[1].uv.y * wb) +
+                                (curTri3d.verts[2].uv.y * wc));
+
+
+                            GenericFileLoader::pixel24 colour = 
+                            GenericFileLoader::sampleBMP(&curMesh.bmp.pixelArray, curMesh.bmp.biHeight, curMesh.bmp.biWidth, &meshU, &meshV, false);
+                            setPixel(vec2i(x, y), rgbText(colour.red, colour.green, colour.blue) + std::string(1, curTri3d.colour));
                         }
                     }
                 }
@@ -605,12 +631,12 @@ class Renderer
 
             return ProjectedPoint(point2d(x, y), poin.z);
         }
-        void initialise(std::vector<Mesh> mesh)
+        void initialise(std::vector<Mesh> mesh, vec2i sDims)
         {
             camera.setup();
             frameCount = 0;
             asciiBrightnessPalette = "@%#*+=-:. ";
-            screenDims = vec2i(100, 30);
+            screenDims = sDims;
             charCount = (screenDims.x + 1) * screenDims.y;
             isRunnning = true;
             meshes = mesh;
@@ -668,17 +694,24 @@ class Renderer
             #endif
             
             std::string output;
-
+            
             for (const std::string& line : screenBuffer)
             {
                 output += line;
             }
 
             bPrint(output.c_str(), output.size());
-            #if (debugMode)
+            #if (true)
             {
-                std::string output =
-                    "\n-- Camera Debug --\n"
+                float fps = 1 / deltaTime;
+                std::string fpscolour;
+                int targetFps = 120;
+                int worstFps = 20;
+                float fpsAlong = (fps - worstFps) / targetFps;
+                fpscolour = rgbText(255 * std::max(0.0f, std::min(1.0f, 2 * (1 - fpsAlong))), 255 * std::max(0.0f, std::min(1.0f, 2 * fpsAlong)), 0);
+                
+                std::string output = fpscolour + "fps: " + std::to_string(1 / deltaTime) + "\n";
+                    /*"\n-- Camera Debug --\n"
                     "x: " + std::to_string(camera.x) + "\n" +
                     "y: " + std::to_string(camera.y) + "\n" +
                     "z: " + std::to_string(camera.z) + "\n" +
@@ -689,8 +722,8 @@ class Renderer
                     "movSpeed: " + std::to_string(camera.movSpeed) + "\n" +
                     "rotSpeed: " + std::to_string(camera.rotSpeed) + "\n" +
                     "\n-- General --\n" +
-                    "deltaTime: " + std::to_string(deltaTime) + "\n" +
-                    "fps: " + std::to_string(1 / deltaTime) + "\n";
+                    "deltaTime: " + std::to_string(deltaTime) + "\n" +*/
+                    
 
 
                 bPrint(output.c_str(), output.size());
@@ -703,10 +736,10 @@ class Renderer
         }
     public:
 
-        void run(const std::vector<Mesh> &mesh)
+        void run(const std::vector<Mesh> &mesh, vec2i sDims)
         {
             auto lastTime = std::chrono::steady_clock::now();
-            initialise(mesh);
+            initialise(mesh, sDims);
             while (isRunnning)
             {
                 auto currentTime = std::chrono::steady_clock::now();
@@ -733,80 +766,91 @@ int main()
 
         triangle3d(
         '&',
-        vertex(vec3(1, 1, 1), ColourRGB(1.0f,0.0f,0.0f)),
-        vertex(vec3(1, -1, 1), ColourRGB(0.0f,1.0f,0.0f)),
-        vertex(vec3(-1, 1, 1), ColourRGB(0.0f,0.0f,1.0f))),
+        vertex(vec3(1, 1, 1),  vec2(0,0), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(1, -1, 1), vec2(0,1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(-1, 1, 1), vec2(1,0), ColourRGB(0.0f,0.0f,1.0f))),
 
         triangle3d(
         '&',
-        vertex(vec3(-1, -1, 1), ColourRGB(1.0f,0.0f,0.0f)),
-        vertex(vec3(1, -1, 1), ColourRGB(0.0f,1.0f,0.0f)),
-        vertex(vec3(-1, 1, 1), ColourRGB(0.0f,0.0f,1.0f))),
+        vertex(vec3(-1, -1, 1), vec2(1,1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(1, -1, 1),  vec2(0,1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(-1, 1, 1),  vec2(1,0), ColourRGB(0.0f,0.0f,1.0f))),
 
         triangle3d(
         '%',
-        vertex(vec3(1, 1, -1), ColourRGB(1.0f,0.0f,0.0f)),
-        vertex(vec3(1, -1, -1), ColourRGB(0.0f,1.0f,0.0f)),
-        vertex(vec3(-1, 1, -1), ColourRGB(0.0f,0.0f,1.0f))),
+        vertex(vec3(1, 1, -1),  vec2(0,0), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(1, -1, -1), vec2(0,1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(-1, 1, -1), vec2(1,0), ColourRGB(0.0f,0.0f,1.0f))),
 
         triangle3d(
         '%',
-        vertex(vec3(-1, -1, -1), ColourRGB(1.0f,0.0f,0.0f)),
-        vertex(vec3(1, -1, -1), ColourRGB(0.0f,1.0f,0.0f)),
-        vertex(vec3(-1, 1,-1), ColourRGB(0.0f,0.0f,1.0f))),
+        vertex(vec3(-1, -1, -1), vec2(1,1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(1, -1, -1),  vec2(0,1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(-1, 1,-1),   vec2(1,0), ColourRGB(0.0f,0.0f,1.0f))),
 
         triangle3d(
         '@',
-        vertex(vec3(1, 1, 1), ColourRGB(1.0f,0.0f,0.0f)),
-        vertex(vec3(1, 1, -1), ColourRGB(0.0f,1.0f,0.0f)),
-        vertex(vec3(1, -1, 1), ColourRGB(0.0f,0.0f,1.0f))),
+        vertex(vec3(1, 1, 1),  vec2(0,0), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(1, 1, -1), vec2(0,1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(1, -1, 1), vec2(1,0), ColourRGB(0.0f,0.0f,1.0f))), 
 
         triangle3d(
         '@',
-        vertex(vec3(1, -1, -1), ColourRGB(1.0f,0.0f,0.0f)),
-        vertex(vec3(1, 1, -1), ColourRGB(0.0f,1.0f,0.0f)),
-        vertex(vec3(1, -1, 1), ColourRGB(0.0f,0.0f,1.0f))),
-      
+        vertex(vec3(1, -1, -1), vec2(1,1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(1, 1, -1),  vec2(0,1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(1, -1, 1),  vec2(1,0), ColourRGB(0.0f,0.0f,1.0f))),
+        
         triangle3d(
         '#',
-        vertex(vec3(-1, 1, 1), ColourRGB(1.0f,0.0f,0.0f)),
-        vertex(vec3(-1, 1, -1), ColourRGB(0.0f,1.0f,0.0f)),
-        vertex(vec3(-1, -1, 1), ColourRGB(0.0f,0.0f,1.0f))),
+        vertex(vec3(-1, 1, 1),  vec2(0,0), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(-1, 1, -1), vec2(0,1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(-1, -1, 1), vec2(1,0), ColourRGB(0.0f,0.0f,1.0f))),
 
         triangle3d(
         '#',
-        vertex(vec3(-1, -1, -1), ColourRGB(1.0f,0.0f,0.0f)),
-        vertex(vec3(-1, 1, -1), ColourRGB(0.0f,1.0f,0.0f)),
-        vertex(vec3(-1, -1, 1), ColourRGB(0.0f,0.0f,1.0f))),
+        vertex(vec3(-1, -1, -1), vec2(1,1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(-1, 1, -1),  vec2(0,1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(-1, -1, 1),  vec2(1,0), ColourRGB(0.0f,0.0f,1.0f))),
         
         triangle3d(
         '+',
-        vertex(vec3(1, 1, 1), ColourRGB(1.0f,0.0f,0.0f)),
-        vertex(vec3(-1, 1, 1), ColourRGB(0.0f,1.0f,0.0f)),
-        vertex(vec3(1, 1, -1), ColourRGB(0.0f,0.0f,1.0f))),
+        vertex(vec3(1, 1, 1),  vec2(0,0), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(-1, 1, 1), vec2(0,1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(1, 1, -1), vec2(1,0), ColourRGB(0.0f,0.0f,1.0f))),
 
-        triangle3d(
+        triangle3d(  
         '+',
-        vertex(vec3(-1, 1, -1), ColourRGB(1.0f,0.0f,0.0f)),
-        vertex(vec3(-1, 1, 1), ColourRGB(0.0f,1.0f,0.0f)),
-        vertex(vec3(1, 1, -1), ColourRGB(0.0f,0.0f,1.0f))),
+        vertex(vec3(-1, 1, -1), vec2(1,1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(-1, 1, 1),  vec2(0,1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(1, 1, -1),  vec2(1,0), ColourRGB(0.0f,0.0f,1.0f))),
 
         triangle3d(
         '?',
-        vertex(vec3(1, -1, 1), ColourRGB(1.0f,0.0f,0.0f)),
-        vertex(vec3(-1, -1, 1), ColourRGB(0.0f,1.0f,0.0f)),
-        vertex(vec3(1, -1, -1), ColourRGB(0.0f,0.0f,1.0f))),
-
-
+        vertex(vec3(1, -1, 1),  vec2(0,0), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(-1, -1, 1), vec2(0,1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(1, -1, -1), vec2(1,0), ColourRGB(0.0f,0.0f,1.0f))),
+                           
         triangle3d(
         '?',
-        vertex(vec3(-1, -1, -1), ColourRGB(1.0f,0.0f,0.0f)),
-        vertex(vec3(-1, -1, 1), ColourRGB(0.0f,1.0f,0.0f)),
-        vertex(vec3(1, -1, -1), ColourRGB(0.0f,0.0f,1.0f))),
+        vertex(vec3(-1, -1, -1), vec2(1,1), ColourRGB(1.0f,0.0f,0.0f)),
+        vertex(vec3(-1, -1, 1),  vec2(0,1), ColourRGB(0.0f,1.0f,0.0f)),
+        vertex(vec3(1, -1, -1),  vec2(1,0), ColourRGB(0.0f,0.0f,1.0f))),
 
-    };
+    }; 
+    
+    std::string Path = "C:\\Users\\mcdon\\Downloads\\test.bmp";
+    Path = "C:\\Users\\mcdon\\Downloads\\maxSensetivity.bmp";
+
     Mesh square(squareMesh);
+
+    square.loadBmp(Path);
+
     meshes.push_back(square);
-    renderer.run(meshes);
+
+    std::cout << "*** 3d Renderer But In Terminal ***\n";
+    std::cout << "Loading textures...\n";
+
+    renderer.run(meshes, vec2i(209,62));  
+    
 }
 
